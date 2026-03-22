@@ -382,12 +382,20 @@ class Tau3MuDataset(InMemoryDataset):
         neg200 = dfs[self.raw_file_names[1].replace('.pkl', '')]
         pos200 = dfs[self.raw_file_names[0].replace('.pkl', '')]
         pos0 = dfs.get('DsTau3muPU0_MTD', None)
-        
+        print(f"\n=== RAW DATA INFO ===")
+        print(f"Initial signal events (pos200): {len(pos200)}")
+        print(f"Initial background events (neg200): {len(neg200)}")
+        print(f"Initial signal ratio: {len(pos200)/len(neg200):.4f}")
         assert self.only_one_tau # Only one-tau is supported
         if self.only_one_tau:
             pos200 = pos200[pos200.n_gen_tau == 1].reset_index(drop=True)
             if pos0 is not None:
                 pos0 = pos0[pos0.n_gen_tau == 1].reset_index(drop=True)
+            
+            print(f"\nAfter only_one_tau filter:")
+            print(f"  Signal events: {len(pos200)}")
+            print(f"  Background events: {len(neg200)}")
+            print(f"  Signal ratio: {len(pos200)/len(neg200):.4f}")
             
             #try:
             #    neg200 = neg200[neg200.n_gen_tau == 1].reset_index(drop=True)
@@ -398,6 +406,11 @@ class Tau3MuDataset(InMemoryDataset):
             pos200 = pos200[pos200.apply(lambda x: self.filter_samples(x), axis=1)].reset_index(drop=True)
             if pos0 is not None:
                 pos0 = pos0[pos0.apply(lambda x: self.filter_samples(x), axis=1)].reset_index(drop=True)
+            print(f"\nAfter cut filter:")
+            print(f"  Signal events: {len(pos200)}")
+            print(f"  Background events: {len(neg200)}")
+            print(f"  Signal ratio: {len(pos200)/len(neg200):.4f}")
+
 
         if pos0 is not None and len(pos0) > 100000:
             print('[INFO] Sampling from pos0 to fasten processing & training...')
@@ -416,7 +429,10 @@ class Tau3MuDataset(InMemoryDataset):
 
         pos['y'], neg['y'] = 1, 0
         #assert self.pos_neg_ratio >= min_pos_neg_ratio, f'min_pos_neg_ratio = {min_pos_neg_ratio}! Now pos_neg_ratio = {self.pos_neg_ratio}!'
-        
+        print(f"\nFinal (before concat):")
+        print(f"  Signal events (pos): {len(pos)}")
+        print(f"  Background events (neg): {len(neg)}")
+        print(f"  Final signal ratio: {len(pos)/len(neg):.4f}")
         print(f'[INFO] Concatenating pos & neg, saving to {df_save_path}...')
         df = pd.concat((pos, neg), join='outer', ignore_index=True)
         df.to_pickle(df_save_path)

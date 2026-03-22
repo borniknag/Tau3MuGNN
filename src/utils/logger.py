@@ -61,7 +61,8 @@ def log_epoch(epoch, phase, loss_dict, clf_logits, clf_labels, batch, sample_idx
         labels.append(label)
         
     clf_probs = np.array(predictions)
-    clf_labels = np.array(clf_labels)
+    #clf_labels = np.array(clf_labels)
+    clf_labels = np.array(labels)
     
     R_LHC = 2760*11.246
     
@@ -206,7 +207,8 @@ class PlotROC(metrics.RocCurveDisplay):
             fig = figure.Figure()
             ax = fig.subplots()
 
-        name = self.estimator_name if name is None else name
+        name = getattr(self, "estimator_name", "ROC Curve") if name is None else name
+        # name = self.estimator_name if name is None else name
 
         line_kwargs = {}
         if self.roc_auc is not None and name is not None:
