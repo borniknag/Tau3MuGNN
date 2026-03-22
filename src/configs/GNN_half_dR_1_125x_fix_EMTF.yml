@@ -9,7 +9,7 @@ data: #Dataset-specific options. If these change, you must delete the previous p
     train: 0.7
     valid: 0.15
     test: 0.15
-  pos_neg_ratio: 0.0 # Ratio of signal samples to background samples. Use 0 to use as much signal/background as possible.
+  pos_neg_ratio: 0.037 # Ratio of signal samples to background samples. Use 0 to use as much signal/background as possible.
   radius: False
   eta_thresh: 0.5
   node_clf: False # Keep false.

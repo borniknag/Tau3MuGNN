@@ -18,7 +18,7 @@ from itertools import product
 from matplotlib import figure
 import matplotlib.pyplot as plt
 from sklearn import metrics
-from sklearn.utils import check_matplotlib_support
+#from sklearn.utils import check_matplotlib_support
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard.summary import hparams
@@ -61,7 +61,10 @@ def log_epoch(epoch, phase, loss_dict, clf_logits, clf_labels, batch, sample_idx
         labels.append(label)
         
     clf_probs = np.array(predictions)
-    clf_labels = np.array(clf_labels)
+    #clf_labels = np.array(clf_labels)
+    clf_labels = np.array(labels)
+
+
     
     R_LHC = 2760*11.246
     
@@ -199,8 +202,17 @@ class Writer(SummaryWriter):
 
 
 class PlotROC(metrics.RocCurveDisplay):
+    def __init__(self, fpr, tpr, roc_auc, estimator_name='GNN'):
+        self.fpr = fpr
+        self.tpr = tpr
+        self.roc_auc = roc_auc
+        self.estimator_name = estimator_name  # This was missing!
+        self.line_ = None
+        self.ax_ = None
+        self.figure_ = None
+
     def plot(self, ax=None, *, name=None, **kwargs):
-        check_matplotlib_support('RocCurveDisplay.plot')
+        #check_matplotlib_support('RocCurveDisplay.plot')
 
         if ax is None:
             fig = figure.Figure()
@@ -235,7 +247,7 @@ class PlotCM(metrics.ConfusionMatrixDisplay):
     def plot(self, *, include_values=True, cmap='viridis',
              xticks_rotation='horizontal', values_format=None,
              ax=None, colorbar=True):
-        check_matplotlib_support("ConfusionMatrixDisplay.plot")
+        #check_matplotlib_support("ConfusionMatrixDisplay.plot")
 
         if ax is None:
             fig = figure.Figure()

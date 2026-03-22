@@ -34,6 +34,9 @@ from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader, DataListLoader
 import pickle
 import multiprocessing
+from torch_geometric.data.storage import GlobalStorage
+torch.serialization.add_safe_globals([GlobalStorage])
+#from torch.serialization import add_safe_globals
 
 class Tau3MuDataset(InMemoryDataset):
     def __init__(self, setting, data_config, endcap, debug=False): # Instantiate relevant variables
@@ -82,7 +85,10 @@ class Tau3MuDataset(InMemoryDataset):
         print(self.raw_file_names)
         print (self.data_dir)
         super(Tau3MuDataset, self).__init__(root=self.data_dir)
-        self.data, self.slices, self.idx_split = torch.load(self.processed_paths[endcap])
+        #self.data, self.slices, self.idx_split = torch.load(self.processed_paths[endcap])
+        #add_safe_globals([torch_geometric.data.Data, torch_geometric.data.DataEdgeAttr])
+        self.data, self.slices, self.idx_split = torch.load(self.processed_paths[endcap], weights_only=False)
+
         self.x_dim = self.data.x.shape[-1]
         self.edge_attr_dim = self.data.edge_attr.shape[-1] if self.edge_feature_names else 0
         print_splits(self)
@@ -212,15 +218,22 @@ class Tau3MuDataset(InMemoryDataset):
             
         print('[INFO] Processing entries...')
         args_agg = []
+        filtered_count = 0
+        total_count = 0
     
         for entry in tqdm(df.itertuples(), total=len(df)):
             masked_entry = self.mask_hits(entry, self.conditions, n_hits_min=self.n_hits_min)
             if masked_entry == None: # Don't use events that don't have any hits left after the mask is applied
                 continue
+            total_count += 1
             
 
             if 'GNN_full' in self.setting:
                 #args_agg.append(masked_entry)
+                test_edge_index = self.build_graph(masked_entry, self.add_self_loops, self.radius, self.virtual_node, self.eta_thresh, self.knn, self.knn_inter)
+                if test_edge_index.shape[1] <= 1:
+                    filtered_count += 1
+                    continue   
                 
                 data_list.append(self._process_one_entry(masked_entry))
             else:
@@ -229,6 +242,10 @@ class Tau3MuDataset(InMemoryDataset):
                         entry = Tau3MuDataset.split_endcap(masked_entry, endcap)
                         if entry == None: # Don't use an endcap that is empty
                             continue
+                        test_edge_index = self.build_graph(entry, self.add_self_loops, self.radius, self.virtual_node, self.eta_thresh, self.knn, self.knn_inter)
+                        if test_edge_index.shape[1] <= 1:
+                            filtered_count += 1
+                            continue  
                         else:
                             # half-detector, tau and non-tau endcap
                             data_list[i].append(self._process_one_entry(entry, endcap=endcap))
@@ -236,16 +253,21 @@ class Tau3MuDataset(InMemoryDataset):
                         entry = Tau3MuDataset.split_endcap(masked_entry, endcap)
                         if entry == None:
                             continue
+                        test_edge_index = self.build_graph(entry, self.add_self_loops, self.radius, self.virtual_node, self.eta_thresh, self.knn, self.knn_inter)
+                        if test_edge_index.shape[1] <= 1:
+                            filtered_count += 1
+                            continue  
                         else:
-                            data = self._process_one_entry(masked_entry, endcap)
+                            data = self._process_one_entry(entry, endcap)
                             data_list[i].append(data)
+        print(f'[INFO] Filtered out {filtered_count}/{total_count} entries with insufficient edges')
                     
         
         
         if 'half' in self.setting:
             for i in range(2):
                 idx_split = Tau3MuDataset.get_idx_split(data_list[i], self.splits, self.pos_neg_ratio)
-                print (data_list[i])
+                #print (data_list[i])
                 data, slices = self.collate(data_list[i])
         
                 print('[INFO] Saving data.pt...')
@@ -366,6 +388,11 @@ class Tau3MuDataset(InMemoryDataset):
         neg200 = dfs[self.raw_file_names[1].replace('.pkl', '')]
         pos200 = dfs[self.raw_file_names[0].replace('.pkl', '')]
 
+        print(f"\n=== RAW DATA INFO ===")
+        print(f"Initial signal events (pos200): {len(pos200)}")
+        print(f"Initial background events (neg200): {len(neg200)}")
+        print(f"Initial signal ratio: {len(pos200)/len(neg200):.4f}")
+
         neg200['stub_real_eta1'] = neg200['stub_eta1'] * 0.087
         neg200['stub_real_eta2'] = neg200['stub_eta2'] * 0.087
         neg200['stub_real_phi1'] = neg200['stub_phi1'] * 3.1415 / 512
@@ -384,6 +411,10 @@ class Tau3MuDataset(InMemoryDataset):
             if pos0 is not None:
                 pos0 = pos0[pos0.n_gen_tau == 1].reset_index(drop=True)
             
+            print(f"\nAfter only_one_tau filter:")
+            print(f"  Signal events: {len(pos200)}")
+            print(f"  Background events: {len(neg200)}")
+            print(f"  Signal ratio: {len(pos200)/len(neg200):.4f}")
             #try:
             #    neg200 = neg200[neg200.n_gen_tau == 1].reset_index(drop=True)
             #except:
@@ -392,6 +423,11 @@ class Tau3MuDataset(InMemoryDataset):
             pos200 = pos200[pos200.apply(lambda x: self.filter_samples(x), axis=1)].reset_index(drop=True)
             if pos0 is not None:
                 pos0 = pos0[pos0.apply(lambda x: self.filter_samples(x), axis=1)].reset_index(drop=True)
+
+            print(f"\nAfter cut filter:")
+            print(f"  Signal events: {len(pos200)}")
+            print(f"  Background events: {len(neg200)}")
+            print(f"  Signal ratio: {len(pos200)/len(neg200):.4f}")        
 
         if pos0 is not None and len(pos0) > 100000:
             print('[INFO] Sampling from pos0 to fasten processing & training...')
@@ -410,7 +446,10 @@ class Tau3MuDataset(InMemoryDataset):
 
         pos['y'], neg['y'] = 1, 0
         #assert self.pos_neg_ratio >= min_pos_neg_ratio, f'min_pos_neg_ratio = {min_pos_neg_ratio}! Now pos_neg_ratio = {self.pos_neg_ratio}!'
-        
+        print(f"\nFinal (before concat):")
+        print(f"  Signal events (pos): {len(pos)}")
+        print(f"  Background events (neg): {len(neg)}")
+        print(f"  Final signal ratio: {len(pos)/len(neg):.4f}")
         print(f'[INFO] Concatenating pos & neg, saving to {df_save_path}...')
         df = pd.concat((pos, neg), join='outer', ignore_index=True)
         df.to_pickle(df_save_path)
@@ -646,8 +685,15 @@ class Tau3MuDataset(InMemoryDataset):
 
     @staticmethod
     def get_edge_features(entry, edge_index, feature_names, virtual_node):
-        if edge_index.shape == (2, 0):
+        '''if edge_index.shape == (2, 0):
             return torch.tensor([])
+            #return torch.zeros((0, len(features_names)), dtype = torch.float)'''
+        if edge_index.shape[1] <= 1:
+            print(f"WARNING: get_edge_features called with {edge_index.shape[1]} edges")
+            return torch.zeros((edge_index.shape[1], len(feature_names)), dtype=torch.float)
+
+            if edge_index.shape[1] == 0:
+                return torch.zeros((0, len(feature_names)), dtype=torch.float)
         
         feature_names_copy = feature_names.copy()
 
@@ -735,7 +781,9 @@ class Tau3MuDataset(InMemoryDataset):
             nlog = -np.log(deta)
             
             edge_features = np.concatenate((edge_features, nlog.reshape(-1,1)), axis=1)
-        #print (edge_features)    
+        #print (edge_features)
+        if edge_features.ndim == 1:
+            edge_features = edge_features.reshape(1,-1)    
         return torch.tensor(edge_features, dtype=torch.float)
 
     @staticmethod

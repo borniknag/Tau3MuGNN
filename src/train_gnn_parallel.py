@@ -74,11 +74,25 @@ class Tau3MuGNNs:
         #print('Shape of ptr: ', data.ptr.size())
         #print('ptr: ', data.ptr)
         #print('batch: ', data.batch)
+
+
         event_clf_logits = self.model(data)
         
         y = torch.cat([event.y for event in data]).to(self.device)
         
         event_loss, loss_dict = self.criterion(event_clf_logits.sigmoid(), y)
+
+        if not hasattr(self, '_diagnostic_printed'):
+            print(f"\n=== DIAGNOSTIC INFO ===")
+            print(f"Sample predictions (raw logits): {event_clf_logits[:5].detach().cpu()}")
+            print(f"Sample predictions (sigmoid): {event_clf_logits.sigmoid()[:5].detach().cpu()}")
+            print(f"Sample labels: {y[:5].detach().cpu()}")
+            print(f"Are labels 0/1? Unique: {torch.unique(y)}")
+            print(f"Prediction mean: {event_clf_logits.sigmoid().mean():.3f}")
+            print(f"Label mean: {y.mean():.3f}")
+            print(f"Pos samples: {(y==1).sum().item()}, Neg samples: {(y==0).sum().item()}")
+            print(f"======================\n")
+            self._diagnostic_printed = True 
         
         if self.node_clf:
             node_clf_logits = self.model(x=data.x, edge_index=data.edge_index, edge_attr=data.edge_attr, batch=data.batch, ptr=data.ptr, node_clf=True)
